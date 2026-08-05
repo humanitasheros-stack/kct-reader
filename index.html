@@ -2,417 +2,767 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#1C1917">
-<title>Kintsugi Reader</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231C1917'/%3E%3Cpath d='M10 44 L26 30 L34 38 L54 16' stroke='%23C9A24B' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reader View</title>
 <style>
-  :root{
-    --ink:#1C1917; --panel:#26211D; --panel-2:#2E2823;
-    --text:#E8E0D4; --muted:#9C8F7F; --gold:#C9A24B; --gold-bright:#E6C36A;
-    --reading-size:1.125rem;
+  :root {
+    --bg: #1e1e2e;
+    --text: #cdd6f4;
+    --dim: #6c7086;
+    --accent: #f9e2af;
+    --highlight-bg: #45475a;
+    --surface: #313244;
+    --border: #585b70;
+    --gold: #f9e2af;
   }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; padding:0; background:var(--ink); color:var(--text);}
-  body{
-    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    padding-bottom:calc(2rem + env(safe-area-inset-bottom));
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Georgia', 'Times New Roman', serif;
+    line-height: 1.8;
+    font-size: 18px;
   }
-  /* ---------- control bar ---------- */
-  header{
-    position:sticky; top:0; z-index:10;
-    background:rgba(28,25,23,.96); backdrop-filter:blur(8px);
-    padding:calc(.6rem + env(safe-area-inset-top)) .75rem .6rem;
-    border-bottom:1px solid #3a332c;
+
+  /* Top bar */
+  #toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
-  .bar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; max-width:46rem; margin:0 auto;}
-  button{
-    font:inherit; color:var(--text); background:var(--panel-2);
-    border:1px solid #463d33; border-radius:.6rem;
-    padding:.55rem .9rem; min-height:44px; cursor:pointer;
+
+  #toolbar button {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: system-ui, sans-serif;
   }
-  button:active{background:#3a332c;}
-  button:focus-visible{outline:2px solid var(--gold);}
-  button.primary{background:var(--gold); border-color:var(--gold); color:#1C1917; font-weight:600;}
-  button.primary:active{background:var(--gold-bright);}
-  select{
-    font:inherit; color:var(--text); background:var(--panel-2);
-    border:1px solid #463d33; border-radius:.6rem; padding:.5rem .6rem; min-height:44px; max-width:9.5rem;
+
+  #toolbar button:hover { border-color: var(--gold); }
+  #toolbar button.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+
+  #toolbar label {
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+    color: var(--dim);
   }
-  .grow{flex:1 1 auto;}
-  .speed-wrap{display:flex; align-items:center; gap:.35rem; color:var(--muted); font-size:.85rem;}
-  .speed-val{color:var(--gold-bright); min-width:2.6rem; text-align:center; font-variant-numeric:tabular-nums;}
-  /* ---------- gold seam progress ---------- */
-  .seam{height:3px; background:#352e27; margin-top:.6rem; border-radius:2px; overflow:hidden;}
-  .seam-fill{height:100%; width:0%; background:linear-gradient(90deg,var(--gold),var(--gold-bright)); transition:width .4s ease;}
-  /* ---------- reading area ---------- */
-  main{max-width:42rem; margin:0 auto; padding:1.25rem 1.1rem 4rem;}
-  #reader{
-    font-family:Charter, Georgia, "Times New Roman", serif;
-    font-size:var(--reading-size); line-height:1.65;
+
+  #toolbar select, #toolbar input[type="range"] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
   }
-  #reader h1,#reader h2,#reader h3,#reader h4{line-height:1.25; color:var(--gold-bright); font-weight:600;}
-  #reader h1{font-size:1.6em;} #reader h2{font-size:1.35em;} #reader h3{font-size:1.15em;}
-  #reader blockquote{border-left:3px solid var(--gold); margin:1em 0; padding:.25em 0 .25em 1em; color:var(--muted); font-style:italic;}
-  #reader pre,#reader code{font-family:ui-monospace, Menlo, monospace; background:var(--panel); border-radius:.4rem;}
-  #reader code{padding:.1em .35em; font-size:.9em;}
-  #reader pre{padding:.8em 1em; overflow-x:auto;}
-  #reader a{color:var(--gold-bright);}
-  #reader hr{border:none; border-top:1px solid #3a332c; margin:2em 0;}
-  #reader img{max-width:100%;}
-  .block{padding:.15rem .6rem; margin:0 -.6rem; border-left:3px solid transparent; border-radius:.3rem; cursor:pointer;}
-  .block.active{background:var(--panel); border-left-color:var(--gold);}
-  /* ---------- empty state ---------- */
-  #dropzone{
-    border:2px dashed #4a4138; border-radius:1rem; padding:3rem 1.5rem;
-    text-align:center; color:var(--muted); margin-top:2rem; cursor:pointer;
+
+  #speed-display {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--accent);
+    min-width: 36px;
   }
-  #dropzone strong{color:var(--text); display:block; font-size:1.1rem; margin-bottom:.4rem;}
-  #dropzone .hint{font-size:.85rem; margin-top:.8rem;}
-  #status{
-    position:fixed; left:50%; transform:translateX(-50%);
-    bottom:calc(1rem + env(safe-area-inset-bottom));
-    background:var(--panel-2); border:1px solid #463d33; border-radius:2rem;
-    padding:.45rem 1.1rem; font-size:.85rem; color:var(--muted);
-    opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap;
+
+  #progress-bar {
+    height: 3px;
+    background: var(--border);
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    z-index: 99;
   }
-  #status.show{opacity:1;}
-  @media (prefers-reduced-motion: reduce){ .seam-fill{transition:none;} }
+
+  #progress-fill {
+    height: 100%;
+    background: var(--gold);
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  /* File drop zone */
+  #drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    margin-top: 60px;
+    padding: 40px;
+    text-align: center;
+  }
+
+  #drop-zone h1 {
+    font-size: 28px;
+    color: var(--gold);
+    margin-bottom: 16px;
+    font-weight: normal;
+  }
+
+  #drop-zone p {
+    color: var(--dim);
+    font-family: system-ui, sans-serif;
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
+  #drop-zone .drop-area {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 60px 80px;
+    margin: 20px 0;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  #drop-zone .drop-area:hover,
+  #drop-zone .drop-area.dragover {
+    border-color: var(--gold);
+  }
+
+  #drop-zone .drop-area p {
+    font-size: 17px;
+    color: var(--text);
+  }
+
+  #file-input { display: none; }
+
+  .shortcuts {
+    margin-top: 30px;
+    text-align: left;
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--dim);
+    line-height: 2;
+  }
+
+  .shortcuts kbd {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Reader content */
+  #reader {
+    display: none;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 80px 24px 120px;
+  }
+
+  #reader h1, #reader h2, #reader h3 {
+    color: var(--gold);
+    margin: 1.5em 0 0.5em;
+    font-weight: normal;
+    line-height: 1.3;
+  }
+
+  #reader h1 { font-size: 1.6em; }
+  #reader h2 { font-size: 1.3em; }
+  #reader h3 { font-size: 1.1em; }
+
+  .para {
+    padding: 6px 12px;
+    margin: 4px -12px;
+    border-radius: 4px;
+    border-left: 3px solid transparent;
+    transition: background 0.2s, border-color 0.2s;
+    cursor: pointer;
+  }
+
+  .para:hover {
+    background: rgba(69, 71, 90, 0.3);
+  }
+
+  .para.speaking {
+    background: var(--highlight-bg);
+    border-left-color: var(--gold);
+  }
+
+  .para.spoken {
+    opacity: 0.6;
+  }
+
+  /* Font size controls */
+  #reader.font-small { font-size: 15px; }
+  #reader.font-medium { font-size: 18px; }
+  #reader.font-large { font-size: 22px; }
+  #reader.font-xl { font-size: 26px; }
+
+  /* Status bar */
+  #status {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--dim);
+    display: flex;
+    justify-content: space-between;
+    z-index: 100;
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="bar">
-    <button id="loadBtn">Load</button>
-    <button id="playBtn" class="primary">Play</button>
-    <button id="stopBtn">Stop</button>
-    <button id="prevBtn" aria-label="Previous paragraph">←</button>
-    <button id="nextBtn" aria-label="Next paragraph">→</button>
-    <span class="grow"></span>
-    <span class="speed-wrap">
-      <button id="slower" aria-label="Slower">−</button>
-      <span class="speed-val" id="speedVal">1.0×</span>
-      <button id="faster" aria-label="Faster">+</button>
-    </span>
-    <select id="voiceSel" aria-label="Voice"></select>
-    <select id="sizeSel" aria-label="Text size">
-      <option value="1rem">S</option>
-      <option value="1.125rem" selected>M</option>
-      <option value="1.3rem">L</option>
-      <option value="1.5rem">XL</option>
-    </select>
-  </div>
-  <div class="seam"><div class="seam-fill" id="seamFill"></div></div>
-</header>
 
-<main>
-  <div id="dropzone">
-    <strong>Drop a .txt or .md file here</strong>
-    or tap to browse your Files
-    <div class="hint">Tap any paragraph to read from there · Space&nbsp;=&nbsp;play/pause on a keyboard</div>
-  </div>
-  <div id="reader" hidden></div>
-</main>
+<div id="toolbar">
+  <button id="btn-load" title="Load file">Load</button>
+  <button id="btn-play" title="Space: Play/Pause">Play</button>
+  <button id="btn-stop" title="Stop">Stop</button>
+  <button id="btn-back" title="Previous paragraph">&larr;</button>
+  <button id="btn-forward" title="Next paragraph">&rarr;</button>
+  <label>Speed</label>
+  <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+  <span id="speed-display">1.0x</span>
+  <label>Voice</label>
+  <select id="voice-select"></select>
+  <label>Size</label>
+  <select id="font-size">
+    <option value="font-small">S</option>
+    <option value="font-medium" selected>M</option>
+    <option value="font-large">L</option>
+    <option value="font-xl">XL</option>
+  </select>
+</div>
 
-<input type="file" id="fileInput" accept=".md,.txt,.markdown,text/plain,text/markdown" hidden>
-<div id="status" role="status"></div>
+<div id="progress-bar"><div id="progress-fill"></div></div>
+
+<div id="drop-zone">
+  <h1>Reader View</h1>
+  <p>Read and listen to documents simultaneously</p>
+  <div class="drop-area" id="drop-area">
+    <p>Drop a .txt or .md file here</p>
+    <p style="font-size: 13px; color: var(--dim);">or click to browse</p>
+  </div>
+  <input type="file" id="file-input" accept=".txt,.md,.text">
+  <div class="shortcuts">
+    <kbd>Space</kbd> Play / Pause<br>
+    <kbd>S</kbd> Stop<br>
+    <kbd>&larr;</kbd> Previous paragraph<br>
+    <kbd>&rarr;</kbd> Next paragraph<br>
+    <kbd>+</kbd> / <kbd>-</kbd> Speed up / down<br>
+    <kbd>[</kbd> / <kbd>]</kbd> Font smaller / larger<br>
+    <kbd>Home</kbd> Jump to top<br>
+    <kbd>G</kbd> Jump to paragraph (enter number)
+  </div>
+</div>
+
+<div id="reader"></div>
+
+<div id="status">
+  <span id="status-left">No document loaded</span>
+  <span id="status-right"></span>
+</div>
 
 <script>
-(function(){
-  "use strict";
-  var synth = window.speechSynthesis;
-  var blocks = [];        // {el, text}
-  var idx = 0;
-  var playing = false;
-  var currentUtt = null;
-  var watchdog = null;
-  var rate = 1.0;
-  var voices = [];
+const synth = window.speechSynthesis;
+let paragraphs = [];
+let paraEls = [];
+let currentIdx = -1;
+let isPlaying = false;
+let isPaused = false;
+let voices = [];
+let selectedVoice = null;
+let fileName = '';
+let currentSentIdx = 0;
+let lastSpeechActivity = Date.now();
 
-  var $ = function(id){ return document.getElementById(id); };
-  var reader = $("reader"), dropzone = $("dropzone"), fileInput = $("fileInput");
-  var statusEl = $("status"), seamFill = $("seamFill");
+// Elements
+const reader = document.getElementById('reader');
+const dropZone = document.getElementById('drop-zone');
+const dropArea = document.getElementById('drop-area');
+const fileInput = document.getElementById('file-input');
+const btnPlay = document.getElementById('btn-play');
+const btnStop = document.getElementById('btn-stop');
+const btnBack = document.getElementById('btn-back');
+const btnForward = document.getElementById('btn-forward');
+const btnLoad = document.getElementById('btn-load');
+const speedSlider = document.getElementById('speed');
+const speedDisplay = document.getElementById('speed-display');
+const voiceSelect = document.getElementById('voice-select');
+const fontSelect = document.getElementById('font-size');
+const progressFill = document.getElementById('progress-fill');
+const statusLeft = document.getElementById('status-left');
+const statusRight = document.getElementById('status-right');
 
-  // ----- persistence (best effort; never fatal) -----
-  function save(k,v){ try{ localStorage.setItem("kreader_"+k, v); }catch(e){} }
-  function load(k){ try{ return localStorage.getItem("kreader_"+k); }catch(e){ return null; } }
+// Load voices
+function loadVoices() {
+  voices = synth.getVoices();
+  voiceSelect.innerHTML = '';
 
-  // ----- tiny markdown renderer (no network needed) -----
-  function escapeHtml(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-  function inline(s){
-    s = escapeHtml(s);
-    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    return s;
+  // Prefer English voices, put them first
+  const english = voices.filter(v => v.lang.startsWith('en'));
+  const others = voices.filter(v => !v.lang.startsWith('en'));
+  const sorted = [...english, ...others];
+
+  sorted.forEach((voice, i) => {
+    const opt = document.createElement('option');
+    opt.value = voices.indexOf(voice);
+    opt.textContent = `${voice.name} (${voice.lang})`;
+    if (voice.default) opt.selected = true;
+    voiceSelect.appendChild(opt);
+  });
+
+  // Default to first English voice
+  if (english.length > 0 && !voices.find(v => v.default && v.lang.startsWith('en'))) {
+    voiceSelect.value = voices.indexOf(english[0]);
   }
-  function stripInline(s){
-    return s.replace(/`([^`]+)`/g,"$1").replace(/\*\*([^*]+)\*\*/g,"$1")
-            .replace(/(^|[^*])\*([^*]+)\*/g,"$1$2").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1");
-  }
-  function parseMarkdown(text){
-    var out = [];   // {html, speak}
-    var lines = text.replace(/\r\n?/g,"\n").split("\n");
-    var i = 0;
-    while(i < lines.length){
-      var line = lines[i];
-      if(/^\s*$/.test(line)){ i++; continue; }
-      // fenced code
-      if(/^```/.test(line)){
-        var code = []; i++;
-        while(i < lines.length && !/^```/.test(lines[i])){ code.push(lines[i]); i++; }
-        i++;
-        out.push({html:"<pre><code>"+escapeHtml(code.join("\n"))+"</code></pre>", speak:""});
-        continue;
-      }
-      // hr
-      if(/^\s*([-*_]\s*){3,}$/.test(line)){ out.push({html:"<hr>", speak:""}); i++; continue; }
-      // heading
-      var h = line.match(/^(#{1,6})\s+(.*)$/);
-      if(h){
-        var lvl = h[1].length;
-        out.push({html:"<h"+lvl+">"+inline(h[2])+"</h"+lvl+">", speak:stripInline(h[2])});
-        i++; continue;
-      }
-      // blockquote
-      if(/^\s*>/.test(line)){
-        var bq = [];
-        while(i < lines.length && /^\s*>/.test(lines[i])){ bq.push(lines[i].replace(/^\s*>\s?/,"")); i++; }
-        var bqText = bq.join(" ");
-        out.push({html:"<blockquote>"+inline(bqText)+"</blockquote>", speak:stripInline(bqText)});
-        continue;
-      }
-      // list
-      if(/^\s*([-*+]|\d+\.)\s+/.test(line)){
-        var items = [], ordered = /^\s*\d+\./.test(line);
-        while(i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])){
-          items.push(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/,"")); i++;
+}
+
+synth.onvoiceschanged = loadVoices;
+loadVoices();
+
+voiceSelect.addEventListener('change', () => {
+  selectedVoice = voices[parseInt(voiceSelect.value)];
+});
+
+// File loading
+btnLoad.addEventListener('click', () => fileInput.click());
+dropArea.addEventListener('click', () => fileInput.click());
+
+dropArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropArea.classList.add('dragover');
+});
+
+dropArea.addEventListener('dragleave', () => {
+  dropArea.classList.remove('dragover');
+});
+
+dropArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropArea.classList.remove('dragover');
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) loadFile(fileInput.files[0]);
+});
+
+function loadFile(file) {
+  fileName = file.name;
+  const fr = new FileReader();
+  fr.onload = () => parseAndDisplay(fr.result);
+  fr.readAsText(file);
+}
+
+function parseAndDisplay(text) {
+  // Stop any current speech
+  stop();
+
+  // Smart paragraph splitting:
+  // 1. First split on blank lines (standard markdown)
+  // 2. Then split long blocks on single newlines where each line is a real paragraph
+  //    (over 80 chars — not a heading, not a list item, not a short line)
+  const blocks = text.split(/\n\s*\n/);
+  const expanded = [];
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    // If block contains single-newline-separated long lines, split them
+    const lines = trimmed.split('\n');
+    if (lines.length > 1 && lines.some(l => l.trim().length > 80)) {
+      let current = '';
+      for (const line of lines) {
+        const lt = line.trim();
+        if (!lt) {
+          if (current) { expanded.push(current); current = ''; }
+          continue;
         }
-        var tag = ordered ? "ol" : "ul";
-        var html = "<"+tag+">" + items.map(function(it){ return "<li>"+inline(it)+"</li>"; }).join("") + "</"+tag+">";
-        out.push({html:html, speak:items.map(stripInline).join(". ")});
-        continue;
+        // A long line (>80 chars) that doesn't start with list/heading markers
+        // is likely its own paragraph
+        const isLongLine = lt.length > 80 && !/^[-*+]\s/.test(lt) && !/^#{1,6}\s/.test(lt);
+        const currentIsLong = current.length > 80;
+        if (current && isLongLine && currentIsLong) {
+          // Both are substantial — treat as separate paragraphs
+          expanded.push(current);
+          current = lt;
+        } else if (!current) {
+          current = lt;
+        } else {
+          // Short line or continuation — merge
+          current += '\n' + lt;
+        }
       }
-      // paragraph (gather consecutive non-empty lines)
-      var para = [];
-      while(i < lines.length && !/^\s*$/.test(lines[i]) &&
-            !/^(#{1,6})\s|^```|^\s*>|^\s*([-*+]|\d+\.)\s+/.test(lines[i])){
-        para.push(lines[i]); i++;
-      }
-      var pText = para.join(" ");
-      out.push({html:"<p>"+inline(pText)+"</p>", speak:stripInline(pText)});
-    }
-    return out;
-  }
-
-  // ----- document loading -----
-  function loadText(text, name){
-    stop(true);
-    var parsed = parseMarkdown(text);
-    reader.innerHTML = "";
-    blocks = [];
-    parsed.forEach(function(b, n){
-      var wrap = document.createElement("div");
-      wrap.className = "block";
-      wrap.innerHTML = b.html;
-      wrap.addEventListener("click", function(){
-        if(b.speak){ idx = blocks.indexOf(entry); playFrom(idx); }
-      });
-      reader.appendChild(wrap);
-      var entry = {el:wrap, text:b.speak};
-      blocks.push(entry);
-    });
-    idx = 0;
-    dropzone.hidden = true;
-    reader.hidden = false;
-    document.title = name ? name.replace(/\.(md|txt|markdown)$/i,"") + " — Kintsugi Reader" : "Kintsugi Reader";
-    updateSeam();
-    toast(blocks.filter(function(b){return b.text;}).length + " paragraphs loaded");
-  }
-  function handleFile(file){
-    if(!file) return;
-    var r = new FileReader();
-    r.onload = function(){ loadText(String(r.result), file.name); };
-    r.onerror = function(){ toast("Couldn't read that file — try again"); };
-    r.readAsText(file);
-  }
-  $("loadBtn").addEventListener("click", function(){ fileInput.click(); });
-  dropzone.addEventListener("click", function(){ fileInput.click(); });
-  fileInput.addEventListener("change", function(){ handleFile(fileInput.files[0]); fileInput.value=""; });
-  document.addEventListener("dragover", function(e){ e.preventDefault(); });
-  document.addEventListener("drop", function(e){
-    e.preventDefault();
-    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  });
-
-  // ----- voices (iOS loads them asynchronously) -----
-  var voiceSel = $("voiceSel");
-  function refreshVoices(){
-    voices = synth.getVoices();
-    if(!voices.length) return;
-    var savedName = load("voice");
-    voiceSel.innerHTML = "";
-    voices.forEach(function(v, n){
-      var o = document.createElement("option");
-      o.value = n;
-      o.textContent = v.name + (v.lang ? " ("+v.lang+")" : "");
-      voiceSel.appendChild(o);
-    });
-    var pick = 0;
-    if(savedName){
-      voices.some(function(v,n){ if(v.name===savedName){ pick=n; return true; } return false; });
+      if (current) expanded.push(current);
     } else {
-      voices.some(function(v,n){ if(/^en/i.test(v.lang)){ pick=n; return true; } return false; });
+      expanded.push(trimmed);
     }
-    voiceSel.value = String(pick);
   }
-  refreshVoices();
-  if(typeof synth.onvoiceschanged !== "undefined"){ synth.onvoiceschanged = refreshVoices; }
-  voiceSel.addEventListener("change", function(){
-    var v = voices[Number(voiceSel.value)];
-    if(v) save("voice", v.name);
-    if(playing) playFrom(idx);   // apply immediately
+  paragraphs = expanded.filter(p => p.length > 0);
+
+  // Build HTML
+  reader.innerHTML = '';
+  paraEls = [];
+
+  paragraphs.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'para';
+    div.dataset.idx = i;
+
+    // Detect headings (markdown)
+    if (/^#{1,3}\s/.test(p)) {
+      const level = p.match(/^(#{1,3})/)[1].length;
+      const text = p.replace(/^#{1,3}\s*/, '');
+      const h = document.createElement(`h${level}`);
+      h.textContent = text;
+      div.appendChild(h);
+    } else if (/^[-*]\s/.test(p)) {
+      // Bullet list — preserve lines
+      const lines = p.split('\n');
+      const ul = document.createElement('ul');
+      ul.style.paddingLeft = '20px';
+      ul.style.margin = '8px 0';
+      lines.forEach(line => {
+        const li = document.createElement('li');
+        li.textContent = line.replace(/^[-*]\s*/, '');
+        li.style.marginBottom = '4px';
+        ul.appendChild(li);
+      });
+      div.appendChild(ul);
+    } else if (/^\*\*.*\*\*$/.test(p.split('\n')[0]) && p.split('\n').length === 1) {
+      // Bold standalone line
+      const strong = document.createElement('strong');
+      strong.textContent = p.replace(/\*\*/g, '');
+      strong.style.color = 'var(--gold)';
+      div.appendChild(strong);
+    } else {
+      // Regular paragraph — handle inline markdown minimally
+      div.innerHTML = `<p>${markdownInline(p)}</p>`;
+    }
+
+    div.addEventListener('click', () => {
+      jumpTo(i);
+    });
+
+    reader.appendChild(div);
+    paraEls.push(div);
   });
 
-  // ----- speech engine (paragraph-by-paragraph; iOS-safe) -----
-  function clearWatchdog(){ if(watchdog){ clearTimeout(watchdog); watchdog = null; } }
+  // Switch view
+  dropZone.style.display = 'none';
+  reader.style.display = 'block';
 
-  function speakBlock(n){
-    clearWatchdog();
-    synth.cancel();                       // iOS: always start clean
-    // skip non-speakable blocks (code, hr)
-    while(n < blocks.length && !blocks[n].text){ n++; }
-    if(n >= blocks.length){ stop(true); toast("End of document"); return; }
-    idx = n;
-    highlight();
-    var u = new SpeechSynthesisUtterance(blocks[n].text);
-    u.rate = rate;
-    var v = voices[Number(voiceSel.value)];
-    if(v) u.voice = v;
-    u.onend = function(){
-      clearWatchdog();
-      if(currentUtt !== u || !playing) return;
-      speakBlock(idx + 1);
-    };
-    u.onerror = function(){
-      clearWatchdog();
-      if(currentUtt !== u || !playing) return;
-      speakBlock(idx + 1);                // skip troubled paragraph rather than dying silently
-    };
-    currentUtt = u;
-    // watchdog: iOS sometimes drops utterances without firing onend.
-    var est = (blocks[n].text.length / 12) / rate * 1000 + 8000;
-    function checkAlive(){
-      if(playing && currentUtt === u && !synth.speaking){
-        speakBlock(idx + 1);
-      } else if(playing && currentUtt === u){
-        // still speaking a long paragraph — re-arm
-        watchdog = setTimeout(checkAlive, 8000);
+  updateStatus();
+}
+
+function markdownInline(text) {
+  // Basic inline: bold, italic, links stripped
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code style="background:var(--surface);padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
+// Speech controls — split into sentences to avoid Chromium 15s cutoff bug
+function textToSentences(text) {
+  // Split on sentence boundaries but keep the delimiters
+  const raw = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+  // Merge very short fragments (e.g. "Dr." "Mr." abbreviations)
+  const merged = [];
+  for (const s of raw) {
+    if (merged.length > 0 && merged[merged.length - 1].length < 30) {
+      merged[merged.length - 1] += s;
+    } else {
+      merged.push(s);
+    }
+  }
+  return merged.map(s => s.trim()).filter(s => s.length > 0);
+}
+
+function speak(idx, startSentIdx = 0) {
+  if (idx < 0 || idx >= paragraphs.length) {
+    stop();
+    return;
+  }
+
+  synth.cancel();
+  currentIdx = idx;
+  lastSpeechActivity = Date.now();
+
+  // Get plain text for speech
+  const text = paragraphs[idx]
+    .replace(/^#{1,3}\s*/, '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/`/g, '')
+    .replace(/[-*]\s/g, '');
+
+  if (text.trim().length === 0) {
+    currentIdx = idx + 1;
+    if (isPlaying) speak(currentIdx);
+    return;
+  }
+
+  // Highlight
+  paraEls.forEach((el, i) => {
+    el.classList.remove('speaking');
+    if (i < idx) el.classList.add('spoken');
+    else el.classList.remove('spoken');
+  });
+  paraEls[idx].classList.add('speaking');
+  paraEls[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Split into sentences and speak sequentially
+  const sentences = textToSentences(text);
+  let sentIdx = Math.min(startSentIdx, Math.max(sentences.length - 1, 0));
+
+  function speakNext() {
+    if (sentIdx >= sentences.length) {
+      // Paragraph done — move to next
+      if (isPlaying && !isPaused) {
+        speak(idx + 1);
       }
+      return;
     }
-    watchdog = setTimeout(checkAlive, est);
-    synth.speak(u);
-  }
-  function playFrom(n){
-    if(!blocks.length){ toast("Load a document first"); return; }
-    playing = true;
-    $("playBtn").textContent = "Pause";
-    speakBlock(n);
-  }
-  function pause(){
-    // iOS synth.resume() is unreliable: we cancel and remember the paragraph instead.
-    playing = false;
-    clearWatchdog();
-    synth.cancel();
-    currentUtt = null;
-    $("playBtn").textContent = "Play";
-    toast("Paused — Play restarts this paragraph");
-  }
-  function stop(silent){
-    playing = false;
-    clearWatchdog();
-    synth.cancel();
-    currentUtt = null;
-    idx = 0;
-    $("playBtn").textContent = "Play";
-    highlight(true);
-    updateSeam();
-    if(!silent) toast("Stopped");
-  }
-  function highlight(clear){
-    blocks.forEach(function(b){ b.el.classList.remove("active"); });
-    if(!clear && blocks[idx]){
-      blocks[idx].el.classList.add("active");
-      blocks[idx].el.scrollIntoView({behavior:"smooth", block:"center"});
-    }
-    updateSeam();
-  }
-  function updateSeam(){
-    var pct = blocks.length ? Math.round((idx / Math.max(blocks.length-1,1)) * 100) : 0;
-    seamFill.style.width = pct + "%";
+
+    currentSentIdx = sentIdx;
+
+    const utt = new SpeechSynthesisUtterance(sentences[sentIdx]);
+    utt.rate = parseFloat(speedSlider.value);
+
+    const vi = parseInt(voiceSelect.value);
+    if (!isNaN(vi) && voices[vi]) utt.voice = voices[vi];
+
+    utt.onstart = () => {
+      lastSpeechActivity = Date.now();
+    };
+
+    utt.onend = () => {
+      lastSpeechActivity = Date.now();
+      sentIdx++;
+      if (isPlaying && !isPaused) {
+        speakNext();
+      }
+    };
+
+    utt.onerror = (e) => {
+      if (e.error !== 'canceled') {
+        console.error('Speech error:', e.error, 'sentence:', sentences[sentIdx]);
+        // Try to recover by moving to next sentence
+        lastSpeechActivity = Date.now();
+        sentIdx++;
+        if (isPlaying && !isPaused) {
+          setTimeout(speakNext, 100);
+        }
+      }
+    };
+
+    synth.speak(utt);
   }
 
-  $("playBtn").addEventListener("click", function(){ playing ? pause() : playFrom(idx); });
-  $("stopBtn").addEventListener("click", function(){ stop(); });
-  $("prevBtn").addEventListener("click", function(){ step(-1); });
-  $("nextBtn").addEventListener("click", function(){ step(1); });
-  function step(d){
-    if(!blocks.length) return;
-    var n = idx + d;
-    while(n >= 0 && n < blocks.length && !blocks[n].text){ n += d; }
-    n = Math.max(0, Math.min(blocks.length-1, n));
-    if(playing){ playFrom(n); } else { idx = n; highlight(); }
+  speakNext();
+  updateStatus();
+  updateProgress();
+}
+
+function play() {
+  if (paragraphs.length === 0) return;
+
+  if (isPaused) {
+    synth.resume();
+    isPaused = false;
+    isPlaying = true;
+    btnPlay.textContent = 'Pause';
+    btnPlay.classList.add('active');
+    return;
   }
 
-  // ----- speed -----
-  function setRate(r){
-    rate = Math.round(Math.max(.5, Math.min(2, r)) * 10) / 10;
-    $("speedVal").textContent = rate.toFixed(1) + "×";
-    save("rate", rate);
-    if(playing) playFrom(idx);
-  }
-  $("slower").addEventListener("click", function(){ setRate(rate - .1); });
-  $("faster").addEventListener("click", function(){ setRate(rate + .1); });
-  var savedRate = parseFloat(load("rate")); if(savedRate) setRate(savedRate);
+  isPlaying = true;
+  isPaused = false;
+  btnPlay.textContent = 'Pause';
+  btnPlay.classList.add('active');
 
-  // ----- text size -----
-  var sizeSel = $("sizeSel");
-  sizeSel.addEventListener("change", function(){
-    document.documentElement.style.setProperty("--reading-size", sizeSel.value);
-    save("size", sizeSel.value);
+  if (currentIdx < 0) currentIdx = 0;
+  speak(currentIdx);
+}
+
+function pause() {
+  synth.pause();
+  isPaused = true;
+  isPlaying = false;
+  btnPlay.textContent = 'Play';
+  btnPlay.classList.remove('active');
+}
+
+function stop() {
+  synth.cancel();
+  isPlaying = false;
+  isPaused = false;
+  currentIdx = -1;
+  btnPlay.textContent = 'Play';
+  btnPlay.classList.remove('active');
+  paraEls.forEach(el => {
+    el.classList.remove('speaking', 'spoken');
   });
-  var savedSize = load("size");
-  if(savedSize){ sizeSel.value = savedSize; document.documentElement.style.setProperty("--reading-size", savedSize); }
+  progressFill.style.width = '0%';
+  updateStatus();
+}
 
-  // ----- keyboard (desktop nicety) -----
-  document.addEventListener("keydown", function(e){
-    if(e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
-    if(e.code === "Space"){ e.preventDefault(); playing ? pause() : playFrom(idx); }
-    else if(e.key === "s" || e.key === "S"){ stop(); }
-    else if(e.key === "ArrowLeft"){ step(-1); }
-    else if(e.key === "ArrowRight"){ step(1); }
-    else if(e.key === "+" || e.key === "="){ setRate(rate + .1); }
-    else if(e.key === "-"){ setRate(rate - .1); }
-    else if(e.key === "Home"){ window.scrollTo({top:0, behavior:"smooth"}); }
+function jumpTo(idx) {
+  if (idx < 0) idx = 0;
+  if (idx >= paragraphs.length) idx = paragraphs.length - 1;
+
+  // Clear spoken state for paragraphs after target
+  paraEls.forEach((el, i) => {
+    el.classList.remove('speaking', 'spoken');
+    if (i < idx) el.classList.add('spoken');
   });
 
-  // iOS quirk: speech dies when the tab is backgrounded mid-utterance; recover on return.
-  document.addEventListener("visibilitychange", function(){
-    if(!document.hidden && playing && !synth.speaking){ speakBlock(idx); }
-  });
+  currentIdx = idx;
 
-  // ----- toast -----
-  var toastTimer = null;
-  function toast(msg){
-    statusEl.textContent = msg;
-    statusEl.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ statusEl.classList.remove("show"); }, 2200);
+  if (isPlaying || isPaused) {
+    isPaused = false;
+    isPlaying = true;
+    btnPlay.textContent = 'Pause';
+    btnPlay.classList.add('active');
+    speak(idx);
+  } else {
+    // Just highlight and scroll, don't auto-play
+    paraEls[idx].classList.add('speaking');
+    paraEls[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    updateStatus();
+    updateProgress();
   }
-})();
+}
+
+function togglePlayPause() {
+  if (isPlaying) pause();
+  else play();
+}
+
+// UI updates
+function updateProgress() {
+  if (paragraphs.length === 0) return;
+  const pct = ((currentIdx + 1) / paragraphs.length) * 100;
+  progressFill.style.width = pct + '%';
+}
+
+function updateStatus() {
+  if (paragraphs.length === 0) {
+    statusLeft.textContent = 'No document loaded';
+    statusRight.textContent = '';
+    return;
+  }
+
+  const pos = currentIdx >= 0 ? currentIdx + 1 : 0;
+  statusLeft.textContent = `${fileName} | ${pos} / ${paragraphs.length} paragraphs`;
+  statusRight.textContent = isPlaying ? 'Playing' : isPaused ? 'Paused' : 'Stopped';
+}
+
+// Speed control
+speedSlider.addEventListener('input', () => {
+  speedDisplay.textContent = parseFloat(speedSlider.value).toFixed(1) + 'x';
+});
+
+// Font size
+fontSelect.addEventListener('change', () => {
+  reader.className = fontSelect.value;
+});
+
+// Button handlers
+btnPlay.addEventListener('click', togglePlayPause);
+btnStop.addEventListener('click', stop);
+btnBack.addEventListener('click', () => jumpTo(Math.max(0, currentIdx - 1)));
+btnForward.addEventListener('click', () => jumpTo(currentIdx + 1));
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Don't capture when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      togglePlayPause();
+      break;
+    case 'KeyS':
+      stop();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      jumpTo(Math.max(0, currentIdx - 1));
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      jumpTo(currentIdx + 1);
+      break;
+    case 'Equal':
+    case 'NumpadAdd':
+      speedSlider.value = Math.min(3.0, parseFloat(speedSlider.value) + 0.1);
+      speedDisplay.textContent = parseFloat(speedSlider.value).toFixed(1) + 'x';
+      break;
+    case 'Minus':
+    case 'NumpadSubtract':
+      speedSlider.value = Math.max(0.5, parseFloat(speedSlider.value) - 0.1);
+      speedDisplay.textContent = parseFloat(speedSlider.value).toFixed(1) + 'x';
+      break;
+    case 'BracketLeft':
+      fontSelect.selectedIndex = Math.max(0, fontSelect.selectedIndex - 1);
+      reader.className = fontSelect.value;
+      break;
+    case 'BracketRight':
+      fontSelect.selectedIndex = Math.min(fontSelect.options.length - 1, fontSelect.selectedIndex + 1);
+      reader.className = fontSelect.value;
+      break;
+    case 'Home':
+      e.preventDefault();
+      jumpTo(0);
+      break;
+    case 'End':
+      e.preventDefault();
+      jumpTo(paragraphs.length - 1);
+      break;
+    case 'KeyG':
+      const num = prompt('Jump to paragraph number:');
+      if (num && !isNaN(num)) jumpTo(parseInt(num) - 1);
+      break;
+  }
+});
+
+// Watchdog: if synth stops unexpectedly mid-paragraph, resume from the sentence
+// that was interrupted (not the start of the paragraph). A brief false reading of
+// synth.speaking between queued utterances is normal, especially on iOS/Safari, so
+// this only fires after a real stall (no activity for STALL_MS) rather than on the
+// first poll that catches a gap.
+const WATCHDOG_POLL_MS = 3000;
+const STALL_MS = 4500;
+setInterval(() => {
+  if (
+    isPlaying &&
+    !isPaused &&
+    !synth.speaking &&
+    currentIdx >= 0 &&
+    currentIdx < paragraphs.length &&
+    Date.now() - lastSpeechActivity > STALL_MS
+  ) {
+    console.warn('Speech watchdog: synth stalled, resuming paragraph', currentIdx, 'at sentence', currentSentIdx);
+    speak(currentIdx, currentSentIdx);
+  }
+}, WATCHDOG_POLL_MS);
 </script>
 </body>
 </html>

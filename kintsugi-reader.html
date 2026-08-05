@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1C1917">
+<title>Kintsugi Reader</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231C1917'/%3E%3Cpath d='M10 44 L26 30 L34 38 L54 16' stroke='%23C9A24B' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --ink:#1C1917; --panel:#26211D; --panel-2:#2E2823;
+    --text:#E8E0D4; --muted:#9C8F7F; --gold:#C9A24B; --gold-bright:#E6C36A;
+    --reading-size:1.125rem;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--ink); color:var(--text);}
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding-bottom:calc(2rem + env(safe-area-inset-bottom));
+  }
+  /* ---------- control bar ---------- */
+  header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(28,25,23,.96); backdrop-filter:blur(8px);
+    padding:calc(.6rem + env(safe-area-inset-top)) .75rem .6rem;
+    border-bottom:1px solid #3a332c;
+  }
+  .bar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; max-width:46rem; margin:0 auto;}
+  button{
+    font:inherit; color:var(--text); background:var(--panel-2);
+    border:1px solid #463d33; border-radius:.6rem;
+    padding:.55rem .9rem; min-height:44px; cursor:pointer;
+  }
+  button:active{background:#3a332c;}
+  button:focus-visible{outline:2px solid var(--gold);}
+  button.primary{background:var(--gold); border-color:var(--gold); color:#1C1917; font-weight:600;}
+  button.primary:active{background:var(--gold-bright);}
+  select{
+    font:inherit; color:var(--text); background:var(--panel-2);
+    border:1px solid #463d33; border-radius:.6rem; padding:.5rem .6rem; min-height:44px; max-width:9.5rem;
+  }
+  .grow{flex:1 1 auto;}
+  .speed-wrap{display:flex; align-items:center; gap:.35rem; color:var(--muted); font-size:.85rem;}
+  .speed-val{color:var(--gold-bright); min-width:2.6rem; text-align:center; font-variant-numeric:tabular-nums;}
+  /* ---------- gold seam progress ---------- */
+  .seam{height:3px; background:#352e27; margin-top:.6rem; border-radius:2px; overflow:hidden;}
+  .seam-fill{height:100%; width:0%; background:linear-gradient(90deg,var(--gold),var(--gold-bright)); transition:width .4s ease;}
+  /* ---------- reading area ---------- */
+  main{max-width:42rem; margin:0 auto; padding:1.25rem 1.1rem 4rem;}
+  #reader{
+    font-family:Charter, Georgia, "Times New Roman", serif;
+    font-size:var(--reading-size); line-height:1.65;
+  }
+  #reader h1,#reader h2,#reader h3,#reader h4{line-height:1.25; color:var(--gold-bright); font-weight:600;}
+  #reader h1{font-size:1.6em;} #reader h2{font-size:1.35em;} #reader h3{font-size:1.15em;}
+  #reader blockquote{border-left:3px solid var(--gold); margin:1em 0; padding:.25em 0 .25em 1em; color:var(--muted); font-style:italic;}
+  #reader pre,#reader code{font-family:ui-monospace, Menlo, monospace; background:var(--panel); border-radius:.4rem;}
+  #reader code{padding:.1em .35em; font-size:.9em;}
+  #reader pre{padding:.8em 1em; overflow-x:auto;}
+  #reader a{color:var(--gold-bright);}
+  #reader hr{border:none; border-top:1px solid #3a332c; margin:2em 0;}
+  #reader img{max-width:100%;}
+  .block{padding:.15rem .6rem; margin:0 -.6rem; border-left:3px solid transparent; border-radius:.3rem; cursor:pointer;}
+  .block.active{background:var(--panel); border-left-color:var(--gold);}
+  /* ---------- empty state ---------- */
+  #dropzone{
+    border:2px dashed #4a4138; border-radius:1rem; padding:3rem 1.5rem;
+    text-align:center; color:var(--muted); margin-top:2rem; cursor:pointer;
+  }
+  #dropzone strong{color:var(--text); display:block; font-size:1.1rem; margin-bottom:.4rem;}
+  #dropzone .hint{font-size:.85rem; margin-top:.8rem;}
+  #status{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(1rem + env(safe-area-inset-bottom));
+    background:var(--panel-2); border:1px solid #463d33; border-radius:2rem;
+    padding:.45rem 1.1rem; font-size:.85rem; color:var(--muted);
+    opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap;
+  }
+  #status.show{opacity:1;}
+  @media (prefers-reduced-motion: reduce){ .seam-fill{transition:none;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <button id="loadBtn">Load</button>
+    <button id="playBtn" class="primary">Play</button>
+    <button id="stopBtn">Stop</button>
+    <button id="prevBtn" aria-label="Previous paragraph">←</button>
+    <button id="nextBtn" aria-label="Next paragraph">→</button>
+    <span class="grow"></span>
+    <span class="speed-wrap">
+      <button id="slower" aria-label="Slower">−</button>
+      <span class="speed-val" id="speedVal">1.0×</span>
+      <button id="faster" aria-label="Faster">+</button>
+    </span>
+    <select id="voiceSel" aria-label="Voice"></select>
+    <select id="sizeSel" aria-label="Text size">
+      <option value="1rem">S</option>
+      <option value="1.125rem" selected>M</option>
+      <option value="1.3rem">L</option>
+      <option value="1.5rem">XL</option>
+    </select>
+  </div>
+  <div class="seam"><div class="seam-fill" id="seamFill"></div></div>
+</header>
+
+<main>
+  <div id="dropzone">
+    <strong>Drop a .txt or .md file here</strong>
+    or tap to browse your Files
+    <div class="hint">Tap any paragraph to read from there · Space&nbsp;=&nbsp;play/pause on a keyboard</div>
+  </div>
+  <div id="reader" hidden></div>
+</main>
+
+<input type="file" id="fileInput" accept=".md,.txt,.markdown,text/plain,text/markdown" hidden>
+<div id="status" role="status"></div>
+
+<script>
+(function(){
+  "use strict";
+  var synth = window.speechSynthesis;
+  var blocks = [];        // {el, text}
+  var idx = 0;
+  var playing = false;
+  var currentUtt = null;
+  var watchdog = null;
+  var rate = 1.0;
+  var voices = [];
+
+  var $ = function(id){ return document.getElementById(id); };
+  var reader = $("reader"), dropzone = $("dropzone"), fileInput = $("fileInput");
+  var statusEl = $("status"), seamFill = $("seamFill");
+
+  // ----- persistence (best effort; never fatal) -----
+  function save(k,v){ try{ localStorage.setItem("kreader_"+k, v); }catch(e){} }
+  function load(k){ try{ return localStorage.getItem("kreader_"+k); }catch(e){ return null; } }
+
+  // ----- tiny markdown renderer (no network needed) -----
+  function escapeHtml(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function inline(s){
+    s = escapeHtml(s);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+  function stripInline(s){
+    return s.replace(/`([^`]+)`/g,"$1").replace(/\*\*([^*]+)\*\*/g,"$1")
+            .replace(/(^|[^*])\*([^*]+)\*/g,"$1$2").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1");
+  }
+  function parseMarkdown(text){
+    var out = [];   // {html, speak}
+    var lines = text.replace(/\r\n?/g,"\n").split("\n");
+    var i = 0;
+    while(i < lines.length){
+      var line = lines[i];
+      if(/^\s*$/.test(line)){ i++; continue; }
+      // fenced code
+      if(/^```/.test(line)){
+        var code = []; i++;
+        while(i < lines.length && !/^```/.test(lines[i])){ code.push(lines[i]); i++; }
+        i++;
+        out.push({html:"<pre><code>"+escapeHtml(code.join("\n"))+"</code></pre>", speak:""});
+        continue;
+      }
+      // hr
+      if(/^\s*([-*_]\s*){3,}$/.test(line)){ out.push({html:"<hr>", speak:""}); i++; continue; }
+      // heading
+      var h = line.match(/^(#{1,6})\s+(.*)$/);
+      if(h){
+        var lvl = h[1].length;
+        out.push({html:"<h"+lvl+">"+inline(h[2])+"</h"+lvl+">", speak:stripInline(h[2])});
+        i++; continue;
+      }
+      // blockquote
+      if(/^\s*>/.test(line)){
+        var bq = [];
+        while(i < lines.length && /^\s*>/.test(lines[i])){ bq.push(lines[i].replace(/^\s*>\s?/,"")); i++; }
+        var bqText = bq.join(" ");
+        out.push({html:"<blockquote>"+inline(bqText)+"</blockquote>", speak:stripInline(bqText)});
+        continue;
+      }
+      // list
+      if(/^\s*([-*+]|\d+\.)\s+/.test(line)){
+        var items = [], ordered = /^\s*\d+\./.test(line);
+        while(i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])){
+          items.push(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/,"")); i++;
+        }
+        var tag = ordered ? "ol" : "ul";
+        var html = "<"+tag+">" + items.map(function(it){ return "<li>"+inline(it)+"</li>"; }).join("") + "</"+tag+">";
+        out.push({html:html, speak:items.map(stripInline).join(". ")});
+        continue;
+      }
+      // paragraph (gather consecutive non-empty lines)
+      var para = [];
+      while(i < lines.length && !/^\s*$/.test(lines[i]) &&
+            !/^(#{1,6})\s|^```|^\s*>|^\s*([-*+]|\d+\.)\s+/.test(lines[i])){
+        para.push(lines[i]); i++;
+      }
+      var pText = para.join(" ");
+      out.push({html:"<p>"+inline(pText)+"</p>", speak:stripInline(pText)});
+    }
+    return out;
+  }
+
+  // ----- document loading -----
+  function loadText(text, name){
+    stop(true);
+    var parsed = parseMarkdown(text);
+    reader.innerHTML = "";
+    blocks = [];
+    parsed.forEach(function(b, n){
+      var wrap = document.createElement("div");
+      wrap.className = "block";
+      wrap.innerHTML = b.html;
+      wrap.addEventListener("click", function(){
+        if(b.speak){ idx = blocks.indexOf(entry); playFrom(idx); }
+      });
+      reader.appendChild(wrap);
+      var entry = {el:wrap, text:b.speak};
+      blocks.push(entry);
+    });
+    idx = 0;
+    dropzone.hidden = true;
+    reader.hidden = false;
+    document.title = name ? name.replace(/\.(md|txt|markdown)$/i,"") + " — Kintsugi Reader" : "Kintsugi Reader";
+    updateSeam();
+    toast(blocks.filter(function(b){return b.text;}).length + " paragraphs loaded");
+  }
+  function handleFile(file){
+    if(!file) return;
+    var r = new FileReader();
+    r.onload = function(){ loadText(String(r.result), file.name); };
+    r.onerror = function(){ toast("Couldn't read that file — try again"); };
+    r.readAsText(file);
+  }
+  $("loadBtn").addEventListener("click", function(){ fileInput.click(); });
+  dropzone.addEventListener("click", function(){ fileInput.click(); });
+  fileInput.addEventListener("change", function(){ handleFile(fileInput.files[0]); fileInput.value=""; });
+  document.addEventListener("dragover", function(e){ e.preventDefault(); });
+  document.addEventListener("drop", function(e){
+    e.preventDefault();
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  // ----- voices (iOS loads them asynchronously) -----
+  var voiceSel = $("voiceSel");
+  function refreshVoices(){
+    voices = synth.getVoices();
+    if(!voices.length) return;
+    var savedName = load("voice");
+    voiceSel.innerHTML = "";
+    voices.forEach(function(v, n){
+      var o = document.createElement("option");
+      o.value = n;
+      o.textContent = v.name + (v.lang ? " ("+v.lang+")" : "");
+      voiceSel.appendChild(o);
+    });
+    var pick = 0;
+    if(savedName){
+      voices.some(function(v,n){ if(v.name===savedName){ pick=n; return true; } return false; });
+    } else {
+      voices.some(function(v,n){ if(/^en/i.test(v.lang)){ pick=n; return true; } return false; });
+    }
+    voiceSel.value = String(pick);
+  }
+  refreshVoices();
+  if(typeof synth.onvoiceschanged !== "undefined"){ synth.onvoiceschanged = refreshVoices; }
+  voiceSel.addEventListener("change", function(){
+    var v = voices[Number(voiceSel.value)];
+    if(v) save("voice", v.name);
+    if(playing) playFrom(idx);   // apply immediately
+  });
+
+  // ----- speech engine (paragraph-by-paragraph; iOS-safe) -----
+  function clearWatchdog(){ if(watchdog){ clearTimeout(watchdog); watchdog = null; } }
+
+  function speakBlock(n){
+    clearWatchdog();
+    synth.cancel();                       // iOS: always start clean
+    // skip non-speakable blocks (code, hr)
+    while(n < blocks.length && !blocks[n].text){ n++; }
+    if(n >= blocks.length){ stop(true); toast("End of document"); return; }
+    idx = n;
+    highlight();
+    var u = new SpeechSynthesisUtterance(blocks[n].text);
+    u.rate = rate;
+    var v = voices[Number(voiceSel.value)];
+    if(v) u.voice = v;
+    u.onend = function(){
+      clearWatchdog();
+      if(currentUtt !== u || !playing) return;
+      speakBlock(idx + 1);
+    };
+    u.onerror = function(){
+      clearWatchdog();
+      if(currentUtt !== u || !playing) return;
+      speakBlock(idx + 1);                // skip troubled paragraph rather than dying silently
+    };
+    currentUtt = u;
+    // watchdog: iOS sometimes drops utterances without firing onend.
+    var est = (blocks[n].text.length / 12) / rate * 1000 + 8000;
+    function checkAlive(){
+      if(playing && currentUtt === u && !synth.speaking){
+        speakBlock(idx + 1);
+      } else if(playing && currentUtt === u){
+        // still speaking a long paragraph — re-arm
+        watchdog = setTimeout(checkAlive, 8000);
+      }
+    }
+    watchdog = setTimeout(checkAlive, est);
+    synth.speak(u);
+  }
+  function playFrom(n){
+    if(!blocks.length){ toast("Load a document first"); return; }
+    playing = true;
+    $("playBtn").textContent = "Pause";
+    speakBlock(n);
+  }
+  function pause(){
+    // iOS synth.resume() is unreliable: we cancel and remember the paragraph instead.
+    playing = false;
+    clearWatchdog();
+    synth.cancel();
+    currentUtt = null;
+    $("playBtn").textContent = "Play";
+    toast("Paused — Play restarts this paragraph");
+  }
+  function stop(silent){
+    playing = false;
+    clearWatchdog();
+    synth.cancel();
+    currentUtt = null;
+    idx = 0;
+    $("playBtn").textContent = "Play";
+    highlight(true);
+    updateSeam();
+    if(!silent) toast("Stopped");
+  }
+  function highlight(clear){
+    blocks.forEach(function(b){ b.el.classList.remove("active"); });
+    if(!clear && blocks[idx]){
+      blocks[idx].el.classList.add("active");
+      blocks[idx].el.scrollIntoView({behavior:"smooth", block:"center"});
+    }
+    updateSeam();
+  }
+  function updateSeam(){
+    var pct = blocks.length ? Math.round((idx / Math.max(blocks.length-1,1)) * 100) : 0;
+    seamFill.style.width = pct + "%";
+  }
+
+  $("playBtn").addEventListener("click", function(){ playing ? pause() : playFrom(idx); });
+  $("stopBtn").addEventListener("click", function(){ stop(); });
+  $("prevBtn").addEventListener("click", function(){ step(-1); });
+  $("nextBtn").addEventListener("click", function(){ step(1); });
+  function step(d){
+    if(!blocks.length) return;
+    var n = idx + d;
+    while(n >= 0 && n < blocks.length && !blocks[n].text){ n += d; }
+    n = Math.max(0, Math.min(blocks.length-1, n));
+    if(playing){ playFrom(n); } else { idx = n; highlight(); }
+  }
+
+  // ----- speed -----
+  function setRate(r){
+    rate = Math.round(Math.max(.5, Math.min(2, r)) * 10) / 10;
+    $("speedVal").textContent = rate.toFixed(1) + "×";
+    save("rate", rate);
+    if(playing) playFrom(idx);
+  }
+  $("slower").addEventListener("click", function(){ setRate(rate - .1); });
+  $("faster").addEventListener("click", function(){ setRate(rate + .1); });
+  var savedRate = parseFloat(load("rate")); if(savedRate) setRate(savedRate);
+
+  // ----- text size -----
+  var sizeSel = $("sizeSel");
+  sizeSel.addEventListener("change", function(){
+    document.documentElement.style.setProperty("--reading-size", sizeSel.value);
+    save("size", sizeSel.value);
+  });
+  var savedSize = load("size");
+  if(savedSize){ sizeSel.value = savedSize; document.documentElement.style.setProperty("--reading-size", savedSize); }
+
+  // ----- keyboard (desktop nicety) -----
+  document.addEventListener("keydown", function(e){
+    if(e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+    if(e.code === "Space"){ e.preventDefault(); playing ? pause() : playFrom(idx); }
+    else if(e.key === "s" || e.key === "S"){ stop(); }
+    else if(e.key === "ArrowLeft"){ step(-1); }
+    else if(e.key === "ArrowRight"){ step(1); }
+    else if(e.key === "+" || e.key === "="){ setRate(rate + .1); }
+    else if(e.key === "-"){ setRate(rate - .1); }
+    else if(e.key === "Home"){ window.scrollTo({top:0, behavior:"smooth"}); }
+  });
+
+  // iOS quirk: speech dies when the tab is backgrounded mid-utterance; recover on return.
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden && playing && !synth.speaking){ speakBlock(idx); }
+  });
+
+  // ----- toast -----
+  var toastTimer = null;
+  function toast(msg){
+    statusEl.textContent = msg;
+    statusEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ statusEl.classList.remove("show"); }, 2200);
+  }
+})();
+</script>
+</body>
+</html>
