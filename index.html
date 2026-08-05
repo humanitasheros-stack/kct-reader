@@ -307,6 +307,124 @@ const progressFill = document.getElementById('progress-fill');
 const statusLeft = document.getElementById('status-left');
 const statusRight = document.getElementById('status-right');
 
+// ---------------------------------------------------------------------------
+// Speech engine. Two of them.
+//   'kokoro'  — local Kokoro-FastAPI on 127.0.0.1:8880 (this desktop). Real
+//               voices, nothing leaves the machine, no utterance cutoff.
+//   'browser' — window.speechSynthesis. The fallback, and what the phone uses.
+// Chrome exempts 127.0.0.1 from mixed-content blocking, so an https page may
+// call it; Kokoro returns permissive CORS. Detection is a 1.5s probe on load.
+// ---------------------------------------------------------------------------
+const KOKORO_URL = 'http://127.0.0.1:8880';
+let engine = 'browser';
+let kokoroVoices = [];
+const audioEl = new Audio();
+let prefetch = { idx: null, url: null };
+
+async function detectKokoro() {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(KOKORO_URL + '/v1/audio/voices', { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return;
+    const d = await r.json();
+    const raw = d.voices || d;
+    kokoroVoices = (Array.isArray(raw) ? raw : []).map(v => (typeof v === 'string' ? v : (v.id || v.name))).filter(Boolean);
+    if (!kokoroVoices.length) return;
+    engine = 'kokoro';
+    loadKokoroVoices();
+    updateStatus();
+  } catch (e) {
+    /* not running, or not this machine — stay on the browser engine */
+  }
+}
+
+function loadKokoroVoices() {
+  voiceSelect.innerHTML = '';
+  // af_heart first: it is what Obsidian Aloud already uses here.
+  const ordered = [...kokoroVoices].sort((a, b) =>
+    (a === 'af_heart' ? -1 : b === 'af_heart' ? 1 : a.localeCompare(b)));
+  ordered.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    voiceSelect.appendChild(o);
+  });
+  voiceSelect.value = kokoroVoices.includes('af_heart') ? 'af_heart' : ordered[0];
+}
+
+function plainTextOf(idx) {
+  return paragraphs[idx]
+    .replace(/^#{1,3}\s*/, '').replace(/\*\*/g, '').replace(/\*/g, '')
+    .replace(/`/g, '').replace(/[-*]\s/g, '');
+}
+
+async function kokoroSynth(text) {
+  const r = await fetch(KOKORO_URL + '/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'kokoro',
+      voice: voiceSelect.value || 'af_heart',
+      input: text,
+      response_format: 'mp3'
+    })
+  });
+  if (!r.ok) throw new Error('kokoro ' + r.status);
+  return URL.createObjectURL(await r.blob());
+}
+
+// Synthesize the NEXT paragraph while this one plays, so the gap between
+// paragraphs is silence-free rather than a synthesis pause.
+function prefetchNext(idx) {
+  const n = idx + 1;
+  if (n >= paragraphs.length) return;
+  const t = plainTextOf(n);
+  if (!t.trim()) return;
+  if (prefetch.idx === n) return;
+  kokoroSynth(t).then(url => { prefetch = { idx: n, url }; }).catch(() => {});
+}
+
+function fallbackToBrowser(why) {
+  console.warn('Kokoro unavailable (' + why + ') — falling back to browser voices');
+  engine = 'browser';
+  prefetch = { idx: null, url: null };
+  loadVoices();
+  updateStatus();
+}
+
+async function speakKokoro(idx) {
+  currentIdx = idx;
+  const text = plainTextOf(idx);
+  if (!text.trim()) { currentIdx = idx + 1; if (isPlaying) speak(currentIdx); return; }
+
+  paraEls.forEach((el, i) => {
+    el.classList.remove('speaking');
+    if (i < idx) el.classList.add('spoken'); else el.classList.remove('spoken');
+  });
+  paraEls[idx].classList.add('speaking');
+  paraEls[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  updateStatus(); updateProgress();
+
+  let url;
+  try {
+    if (prefetch.idx === idx && prefetch.url) { url = prefetch.url; prefetch = { idx: null, url: null }; }
+    else { statusRight.textContent = 'Synthesizing…'; url = await kokoroSynth(text); }
+  } catch (e) { fallbackToBrowser(e.message); if (isPlaying) speak(idx); return; }
+
+  audioEl.src = url;
+  audioEl.playbackRate = parseFloat(speedSlider.value);
+  audioEl.onended = () => {
+    URL.revokeObjectURL(url);
+    if (isPlaying && !isPaused) speak(currentIdx + 1);
+  };
+  audioEl.onerror = () => { URL.revokeObjectURL(url); fallbackToBrowser('playback error'); };
+  audioEl.play().catch(e => fallbackToBrowser('autoplay blocked'));
+  prefetchNext(idx);
+  updateStatus();
+}
+
+
 // Load voices
 function loadVoices() {
   voices = synth.getVoices();
@@ -333,8 +451,14 @@ function loadVoices() {
 
 synth.onvoiceschanged = loadVoices;
 loadVoices();
+detectKokoro();
 
 voiceSelect.addEventListener('change', () => {
+  if (engine === 'kokoro') {
+    prefetch = { idx: null, url: null };
+    if (isPlaying && currentIdx >= 0) speak(currentIdx);
+    return;
+  }
   selectedVoice = voices[parseInt(voiceSelect.value)];
 });
 
@@ -499,6 +623,8 @@ function speak(idx, startSentIdx = 0) {
     return;
   }
 
+  if (engine === 'kokoro') { speakKokoro(idx); return; }
+
   synth.cancel();
   currentIdx = idx;
   lastSpeechActivity = Date.now();
@@ -583,7 +709,7 @@ function play() {
   if (paragraphs.length === 0) return;
 
   if (isPaused) {
-    synth.resume();
+    if (engine === 'kokoro') audioEl.play(); else synth.resume();
     isPaused = false;
     isPlaying = true;
     btnPlay.textContent = 'Pause';
@@ -601,7 +727,7 @@ function play() {
 }
 
 function pause() {
-  synth.pause();
+  if (engine === 'kokoro') audioEl.pause(); else synth.pause();
   isPaused = true;
   isPlaying = false;
   btnPlay.textContent = 'Play';
@@ -609,7 +735,8 @@ function pause() {
 }
 
 function stop() {
-  synth.cancel();
+  if (engine === 'kokoro') { audioEl.pause(); audioEl.removeAttribute('src'); prefetch = { idx: null, url: null }; }
+  else synth.cancel();
   isPlaying = false;
   isPaused = false;
   currentIdx = -1;
@@ -670,12 +797,14 @@ function updateStatus() {
 
   const pos = currentIdx >= 0 ? currentIdx + 1 : 0;
   statusLeft.textContent = `${fileName} | ${pos} / ${paragraphs.length} paragraphs`;
-  statusRight.textContent = isPlaying ? 'Playing' : isPaused ? 'Paused' : 'Stopped';
+  const state = isPlaying ? 'Playing' : isPaused ? 'Paused' : 'Stopped';
+  statusRight.textContent = state + (engine === 'kokoro' ? ' · Kokoro (local)' : ' · browser voice');
 }
 
 // Speed control
 speedSlider.addEventListener('input', () => {
   speedDisplay.textContent = parseFloat(speedSlider.value).toFixed(1) + 'x';
+  if (engine === 'kokoro') audioEl.playbackRate = parseFloat(speedSlider.value);
 });
 
 // Font size
@@ -752,6 +881,7 @@ const WATCHDOG_POLL_MS = 3000;
 const STALL_MS = 4500;
 setInterval(() => {
   if (
+    engine === 'browser' &&
     isPlaying &&
     !isPaused &&
     !synth.speaking &&
